@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Delly Beauty App</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="DellyBeauty">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#f43f5e">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        body { -webkit-tap-highlight-color: transparent; }
+        .app-card { border-radius: 1.5rem; transition: transform 0.2s; }
+        .app-card:active { transform: scale(0.98); }
+        .filter-chip { transition: all 0.2s; white-space: nowrap; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans pb-safe">
+    <div id="app"></div>
+
+    <script>
+        const ADMIN_PASSWORD = 'Delly2013';
+        const BRANDS = ['Natura', 'Avon', 'Yanbal'];
+        const CATEGORIES = ['Cuidado Capilar', 'Cuidado de la Piel', 'Maquillaje', 'Perfumería', 'Cuidado Corporal', 'Accesorios'];
+        
+        let inventory = JSON.parse(localStorage.getItem('delly_db_v4')) || [];
+        let currentView = 'catalog';
+        let isAuth = false;
+        
+        // Estado de filtros
+        let searchFilter = '';
+        let brandFilter = 'Todas';
+        let categoryFilter = 'Todo';
+
+        function setView(v) { 
+            currentView = v; 
+            render(); 
+            window.scrollTo(0,0); 
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            if (currentView === 'catalog') app.innerHTML = renderCatalog();
+            else if (currentView === 'login') app.innerHTML = renderLogin();
+            else if (currentView === 'admin') app.innerHTML = renderAdmin();
+            lucide.createIcons();
+        }
+
+        function renderCatalog() {
+            const filtered = inventory.filter(p => {
+                const matchesSearch = p.name.toLowerCase().includes(searchFilter.toLowerCase());
+                const matchesBrand = brandFilter === 'Todas' || p.brand === brandFilter;
+                const matchesCategory = categoryFilter === 'Todo' || p.category === categoryFilter;
+                return matchesSearch && matchesBrand && matchesCategory;
+            });
+
+            return `
+                <nav class="bg-white/90 backdrop-blur-md p-4 border-b flex justify-between items-center sticky top-0 z-50 shadow-sm">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-rose-500 p-2 rounded-xl text-white shadow-lg shadow-rose-200"><i data-lucide="sparkles" class="w-5 h-5"></i></div>
+                        <div>
+                            <span class="block font-black text-rose-600 leading-none tracking-tight text-lg">DELLY BEAUTY</span>
+                            <span class="block text-[8px] font-bold text-slate-400 tracking-widest uppercase italic">Catálogo Virtual</span>
+                        </div>
+                    </div>
+                    <button onclick="setView('login')" class="text-slate-300 p-2"><i data-lucide="user" class="w-5 h-5"></i></button>
+                </nav>
+
+                <div class="p-4 max-w-lg mx-auto space-y-4">
+                    <!-- Buscador -->
+                    <div class="relative group">
+                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                        <input 
+                            type="text" 
+                            placeholder="¿Qué buscas hoy?" 
+                            value="${searchFilter}"
+                            oninput="searchFilter = this.value; render();"
+                            class="w-full pl-11 pr-4 py-4 bg-white rounded-2xl shadow-sm border-none outline-none focus:ring-2 focus:ring-rose-300 transition-all font-medium text-sm"
+                        >
+                    </div>
+
+                    <!-- Filtro de Marcas -->
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        ${['Todas', ...BRANDS].map(b => `
+                            <button 
+                                onclick="brandFilter = '${b}'; render();"
+                                class="filter-chip px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-wider ${brandFilter === b ? 'bg-rose-500 text-white shadow-md shadow-rose-200' : 'bg-white text-slate-400 border border-slate-100'}"
+                            >
+                                ${b}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <!-- Filtro de Categorías -->
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        ${['Todo', ...CATEGORIES].map(c => `
+                            <button 
+                                onclick="categoryFilter = '${c}'; render();"
+                                class="filter-chip px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${categoryFilter === c ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}"
+                            >
+                                ${c}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <!-- Cuadrícula de Productos -->
+                    <div class="grid grid-cols-2 gap-4 pt-2">
+                        ${filtered.map(p => `
+                            <div class="bg-white app-card overflow-hidden shadow-sm border border-slate-50">
+                                <div class="aspect-square bg-slate-50 flex items-center justify-center relative">
+                                    ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<i data-lucide="package" class="text-rose-100 w-10 h-10"></i>'}
+                                    <div class="absolute top-2 left-2 flex flex-col gap-1">
+                                        <span class="bg-rose-500/90 backdrop-blur text-white px-2 py-0.5 rounded-md text-[7px] font-black uppercase italic shadow-sm w-fit">${p.brand}</span>
+                                        <span class="bg-white/90 backdrop-blur text-slate-500 px-2 py-0.5 rounded-md text-[7px] font-bold uppercase w-fit">${p.category || 'General'}</span>
+                                    </div>
+                                </div>
+                                <div class="p-3">
+                                    <h3 class="font-bold text-xs truncate text-slate-700">${p.name}</h3>
+                                    <div class="flex justify-between items-center mt-1">
+                                        <p class="text-rose-600 font-black text-sm">$${Number(p.price).toLocaleString('es-CO')}</p>
+                                        <div class="flex items-center gap-1 text-[8px] font-bold ${p.quantity <= 2 ? 'text-red-500' : 'text-slate-300'}">
+                                            <i data-lucide="check-circle" class="w-2 h-2"></i> ${p.quantity}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    ${filtered.length === 0 ? `
+                        <div class="text-center py-20 animate-pulse">
+                            <i data-lucide="search-x" class="mx-auto text-slate-200 w-12 h-12 mb-2"></i>
+                            <p class="text-slate-300 font-bold uppercase tracking-widest text-[10px]">No se encontró lo que buscas</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderLogin() {
+            return `
+                <div class="min-h-[90vh] flex flex-col items-center justify-center p-6">
+                    <div class="w-full max-w-xs bg-white rounded-[3rem] p-8 shadow-2xl border text-center relative overflow-hidden">
+                        <div class="absolute -top-10 -right-10 bg-rose-50 w-32 h-32 rounded-full opacity-50"></div>
+                        <div class="w-16 h-16 bg-rose-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-rose-200">
+                            <i data-lucide="shield-check" class="w-8 h-8"></i>
+                        </div>
+                        <h2 class="text-xl font-bold mb-1">Dueña de Negocio</h2>
+                        <p class="text-slate-400 text-[10px] uppercase font-bold tracking-widest mb-6">Panel Privado</p>
+                        <input type="password" id="passInput" placeholder="••••" class="w-full p-4 bg-slate-50 rounded-2xl mb-4 text-center text-2xl tracking-widest outline-none border focus:border-rose-400">
+                        <button onclick="handleLogin()" class="w-full py-4 bg-rose-500 text-white rounded-2xl font-bold shadow-lg shadow-rose-200 active:scale-95 transition-all">ACCEDER</button>
+                        <button onclick="setView('catalog')" class="mt-4 text-slate-300 text-[10px] font-black uppercase tracking-[0.2em]">Cerrar</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdmin() {
+            return `
+                <nav class="bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-rose-500 w-2 h-2 rounded-full animate-ping"></div>
+                        <span class="font-black italic text-sm tracking-tighter">STOCK MANAGER</span>
+                    </div>
+                    <button onclick="logout()" class="bg-white/10 px-3 py-1 rounded-lg text-[10px] font-bold">CERRAR SESIÓN</button>
+                </nav>
+                <div class="p-4 max-w-lg mx-auto space-y-4">
+                    <div class="bg-white p-6 rounded-[2rem] border-2 border-rose-100 shadow-xl space-y-3">
+                        <h3 class="text-center font-black text-rose-500 text-xs tracking-widest uppercase mb-2">Nuevo Ingreso</h3>
+                        <input id="prodName" placeholder="Nombre (ej: Labial Mate)" class="w-full p-4 bg-slate-50 rounded-xl outline-none border-none text-sm font-bold">
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-black text-slate-400 ml-2">MARCA</label>
+                                <select id="prodBrand" class="w-full p-4 bg-slate-50 rounded-xl outline-none border-none text-sm font-black text-rose-600 appearance-none">
+                                    ${BRANDS.map(b => `<option value="${b}">${b}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-black text-slate-400 ml-2">CATEGORÍA</label>
+                                <select id="prodCategory" class="w-full p-4 bg-slate-50 rounded-xl outline-none border-none text-sm font-bold text-slate-600 appearance-none">
+                                    ${CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <input id="prodPrice" type="number" placeholder="Precio ($)" class="flex-1 p-4 bg-slate-50 rounded-xl outline-none border-none font-black">
+                            <input id="prodStock" type="number" placeholder="Stock" class="flex-1 p-4 bg-slate-50 rounded-xl outline-none border-none font-bold">
+                        </div>
+                        
+                        <div class="flex gap-2">
+                            <input type="file" id="prodImg" class="hidden" accept="image/*" onchange="previewImg(event)">
+                            <button onclick="document.getElementById('prodImg').click()" class="flex-1 p-4 bg-slate-100 rounded-xl text-[10px] font-black text-slate-500 uppercase flex items-center justify-center gap-2">
+                                <i data-lucide="camera" class="w-4 h-4"></i> Foto
+                            </button>
+                            <button onclick="saveProduct()" class="flex-[2] py-4 bg-rose-500 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-all">REGISTRAR</button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-[2rem] shadow-sm border overflow-hidden">
+                        <div class="p-4 bg-slate-50 border-b flex justify-between items-center">
+                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Productos en App</span>
+                            <span class="bg-rose-100 text-rose-600 px-2 py-0.5 rounded text-[10px] font-black">${inventory.length}</span>
+                        </div>
+                        ${inventory.map((p, index) => `
+                            <div class="p-4 border-b flex items-center justify-between hover:bg-slate-50/50">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-slate-100 overflow-hidden shadow-inner flex items-center justify-center">
+                                        ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<i data-lucide="image" class="w-4 h-4 text-slate-300"></i>'}
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-xs truncate w-32">${p.name}</p>
+                                        <div class="flex items-center gap-1">
+                                            <span class="text-[8px] text-rose-500 font-black uppercase tracking-tighter">${p.brand}</span>
+                                            <span class="text-slate-300 text-[8px]">•</span>
+                                            <span class="text-[8px] text-slate-400 font-bold uppercase">${p.category}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="text-right mr-2">
+                                        <p class="text-[10px] font-black">$${Number(p.price).toLocaleString()}</p>
+                                        <p class="text-[8px] font-bold text-slate-400">${p.quantity} pz.</p>
+                                    </div>
+                                    <button onclick="deleteProduct(${index})" class="text-red-200 hover:text-red-500 p-2 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Lógica de la Aplicación ---
+        let tempImage = null;
+
+        function handleLogin() {
+            if (document.getElementById('passInput').value === ADMIN_PASSWORD) { isAuth = true; setView('admin'); }
+            else alert('Contraseña Inválida');
+        }
+
+        function logout() { isAuth = false; setView('catalog'); }
+
+        function previewImg(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => { 
+                    tempImage = reader.result; 
+                    alert('¡Imagen cargada correctamente!'); 
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveProduct() {
+            const name = document.getElementById('prodName').value;
+            const brand = document.getElementById('prodBrand').value;
+            const category = document.getElementById('prodCategory').value;
+            const price = document.getElementById('prodPrice').value;
+            const quantity = document.getElementById('prodStock').value;
+            
+            if (!name || !price || !quantity) return alert('Por favor, completa todos los campos.');
+            
+            inventory.unshift({ 
+                name, 
+                brand, 
+                category, 
+                price: Number(price), 
+                quantity: Number(quantity), 
+                image: tempImage,
+                id: Date.now()
+            });
+            
+            localStorage.setItem('delly_db_v4', JSON.stringify(inventory));
+            tempImage = null;
+            render();
+            alert('Producto añadido con éxito');
+        }
+
+        function deleteProduct(i) {
+            if (confirm('¿Segura que quieres borrar este producto?')) {
+                inventory.splice(i, 1);
+                localStorage.setItem('delly_db_v4', JSON.stringify(inventory));
+                render();
+            }
+        }
+
+        window.onload = render;
+    </script>
+</body>
+</html>
