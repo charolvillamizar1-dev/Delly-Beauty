@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delly Beauty Inventory</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
+    <div id="app"></div>
+
+    <script>
+        // Configuración y Estado
+        const ADMIN_PASSWORD = 'Delly2013';
+        const BRANDS = ['Natura', 'Avon', 'Yanbal'];
+        let inventory = JSON.parse(localStorage.getItem('delly_db')) || [];
+        let currentView = 'catalog';
+        let isAuth = false;
+
+        function render() {
+            const app = document.getElementById('app');
+            if (currentView === 'catalog') app.innerHTML = renderCatalog();
+            else if (currentView === 'login') app.innerHTML = renderLogin();
+            else if (currentView === 'admin') app.innerHTML = renderAdmin();
+            lucide.createIcons();
+        }
+
+        function renderCatalog() {
+            return `
+                <nav class="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-50 shadow-sm">
+                    <div class="flex items-center gap-2">
+                        <div class="bg-rose-500 p-2 rounded-lg text-white"><i data-lucide="shopping-bag"></i></div>
+                        <span class="font-black text-rose-600">DELLY BEAUTY</span>
+                    </div>
+                    <button onclick="setView('login')" class="text-slate-400"><i data-lucide="lock"></i></button>
+                </nav>
+                <div class="p-4 max-w-4xl mx-auto space-y-6">
+                    <div class="bg-rose-500 rounded-3xl p-6 text-white shadow-lg">
+                        <h2 class="text-2xl font-bold">Catálogo de Belleza</h2>
+                        <p class="opacity-90">Natura • Avon • Yanbal</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        ${inventory.map(p => `
+                            <div class="bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-sm">
+                                <div class="aspect-square bg-slate-100 flex items-center justify-center relative">
+                                    ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<i data-lucide="package" class="text-rose-200"></i>'}
+                                    <span class="absolute top-2 left-2 bg-white/80 px-2 py-1 rounded-lg text-[10px] font-black text-rose-600 uppercase italic">${p.brand}</span>
+                                </div>
+                                <div class="p-3">
+                                    <h3 class="font-bold text-sm truncate">${p.name}</h3>
+                                    <p class="text-rose-600 font-black mt-1">$${Number(p.price).toLocaleString('es-CO')}</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    ${inventory.length === 0 ? '<p class="text-center text-slate-400 py-10">No hay productos aún.</p>' : ''}
+                </div>
+            `;
+        }
+
+        function renderLogin() {
+            return `
+                <div class="max-w-md mx-auto mt-20 p-8 bg-white rounded-[40px] shadow-xl text-center border">
+                    <i data-lucide="lock" class="mx-auto text-rose-500 mb-4 w-12 h-12"></i>
+                    <h2 class="text-xl font-bold mb-6">Acceso Administrador</h2>
+                    <input type="password" id="passInput" placeholder="Contraseña" class="w-full p-4 bg-slate-50 rounded-2xl mb-4 text-center outline-none border focus:border-rose-400">
+                    <button onclick="handleLogin()" class="w-full py-4 bg-rose-500 text-white rounded-2xl font-bold">ENTRAR</button>
+                    <button onclick="setView('catalog')" class="mt-4 text-slate-400 text-sm block w-full text-center">Cancelar</button>
+                </div>
+            `;
+        }
+
+        function renderAdmin() {
+            return `
+                <nav class="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-50 shadow-sm">
+                    <span class="font-black text-slate-700 underline decoration-rose-400">PANEL DE STOCK</span>
+                    <button onclick="logout()" class="text-red-500 font-bold">Salir</button>
+                </nav>
+                <div class="p-4 max-w-4xl mx-auto space-y-4">
+                    <div class="bg-white p-6 rounded-3xl border-2 border-rose-100 shadow-md space-y-4">
+                        <input id="prodName" placeholder="Nombre" class="w-full p-3 bg-slate-50 rounded-xl outline-none border">
+                        <div class="flex gap-2">
+                            <select id="prodBrand" class="flex-1 p-3 bg-slate-50 rounded-xl outline-none border">
+                                ${BRANDS.map(b => `<option value="${b}">${b}</option>`).join('')}
+                            </select>
+                            <input id="prodPrice" type="number" placeholder="Precio" class="flex-1 p-3 bg-slate-50 rounded-xl outline-none border">
+                        </div>
+                        <div class="flex gap-2">
+                            <input id="prodStock" type="number" placeholder="Cantidad" class="flex-1 p-3 bg-slate-50 rounded-xl outline-none border">
+                            <input type="file" id="prodImg" class="hidden" onchange="previewImg(event)">
+                            <button onclick="document.getElementById('prodImg').click()" class="flex-1 p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-500">SUBIR FOTO</button>
+                        </div>
+                        <button onclick="saveProduct()" class="w-full py-4 bg-rose-500 text-white rounded-2xl font-bold shadow-lg">GUARDAR PRODUCTO</button>
+                    </div>
+                    <div class="bg-white rounded-3xl shadow-sm border overflow-hidden">
+                        ${inventory.map((p, index) => `
+                            <div class="p-4 border-b flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-slate-100 overflow-hidden">
+                                        ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : ''}
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-sm">${p.name}</p>
+                                        <p class="text-[10px] text-rose-500 font-bold">${p.brand} • ${p.quantity} unid.</p>
+                                    </div>
+                                </div>
+                                <button onclick="deleteProduct(${index})" class="text-red-400 p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Lógica
+        let tempImage = null;
+        function setView(v) { currentView = v; render(); }
+        
+        function handleLogin() {
+            const val = document.getElementById('passInput').value;
+            if (val === ADMIN_PASSWORD) { isAuth = true; setView('admin'); }
+            else alert('Clave incorrecta');
+        }
+
+        function logout() { isAuth = false; setView('catalog'); }
+
+        function previewImg(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onloadend = () => { tempImage = reader.result; alert('Foto cargada'); };
+            reader.readAsDataURL(file);
+        }
+
+        function saveProduct() {
+            const name = document.getElementById('prodName').value;
+            const brand = document.getElementById('prodBrand').value;
+            const price = document.getElementById('prodPrice').value;
+            const quantity = document.getElementById('prodStock').value;
+            if (!name || !price) return alert('Llenar campos');
+            
+            inventory.unshift({ name, brand, price, quantity, image: tempImage });
+            localStorage.setItem('delly_db', JSON.stringify(inventory));
+            tempImage = null;
+            render();
+        }
+
+        function deleteProduct(i) {
+            if (confirm('¿Eliminar?')) {
+                inventory.splice(i, 1);
+                localStorage.setItem('delly_db', JSON.stringify(inventory));
+                render();
+            }
+        }
+
+        window.onload = render;
+    </script>
+</body>
+</html>
