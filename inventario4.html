@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Delly Beauty App</title>
+    
+    <!-- PWA Meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="DellyBeauty">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: background-color 0.5s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .product-card {
+            border-radius: 1.5rem;
+            background: white;
+            transition: transform 0.2s;
+        }
+
+        .product-card:active {
+            transform: scale(0.97);
+        }
+
+        /* Variables de Tema dinámicas */
+        .theme-bg { background-color: var(--app-bg); }
+        .theme-text { color: var(--app-accent); }
+        .theme-btn { background-color: var(--app-accent); color: white; }
+        .theme-border { border-color: var(--app-border); }
+    </style>
+</head>
+<body class="pb-safe">
+    <div id="app"></div>
+
+    <script>
+        // --- Estado Global ---
+        const ADMIN_PASSWORD = 'Delly2013';
+        const BRANDS = ['Natura', 'Avon', 'Yanbal'];
+        const CATEGORIES = ['Cuidado Capilar', 'Cuidado de la Piel', 'Maquillaje', 'Perfumería', 'Accesorios'];
+        
+        // Temas Disponibles
+        const THEMES = {
+            rosa: { bg: '#fdf2f2', accent: '#f472b6', border: '#fee2e2', text: '#be185d' },
+            lavanda: { bg: '#f5f3ff', accent: '#8b5cf6', border: '#ddd6fe', text: '#5b21b6' },
+            menta: { bg: '#f0fdf4', accent: '#10b981', border: '#d1fae5', text: '#065f46' },
+            crema: { bg: '#fffbeb', accent: '#d97706', border: '#fef3c7', text: '#92400e' }
+        };
+
+        // Persistencia
+        let inventory = JSON.parse(localStorage.getItem('delly_db')) || [];
+        let config = JSON.parse(localStorage.getItem('delly_config')) || { 
+            theme: 'rosa', 
+            catalogActive: true 
+        };
+
+        let currentView = 'catalog';
+        let isAuth = false;
+        let searchFilter = '';
+        let brandFilter = 'Todas';
+        let categoryFilter = 'Todo';
+
+        // Aplicar estilos de tema al cargar
+        function updateStyles() {
+            const theme = THEMES[config.theme];
+            document.documentElement.style.setProperty('--app-bg', theme.bg);
+            document.documentElement.style.setProperty('--app-accent', theme.accent);
+            document.documentElement.style.setProperty('--app-border', theme.border);
+            document.body.style.backgroundColor = theme.bg;
+        }
+
+        function setView(v) { 
+            currentView = v; 
+            render(); 
+            window.scrollTo(0,0);
+        }
+
+        function render() {
+            updateStyles();
+            const app = document.getElementById('app');
+            if (currentView === 'catalog') app.innerHTML = renderCatalog();
+            else if (currentView === 'login') app.innerHTML = renderLogin();
+            else if (currentView === 'admin') app.innerHTML = renderAdmin();
+            lucide.createIcons();
+        }
+
+        // --- Vistas ---
+        function renderCatalog() {
+            if (!config.catalogActive) {
+                return `
+                    <div class="min-h-screen flex flex-col items-center justify-center p-10 text-center">
+                        <i data-lucide="clock" class="w-16 h-16 theme-text mb-4"></i>
+                        <h2 class="text-xl font-bold opacity-70">Tienda en mantenimiento</h2>
+                        <p class="text-xs text-slate-400 mt-2">Estamos actualizando nuestro catálogo. ¡Vuelve pronto!</p>
+                        <button onclick="setView('login')" class="mt-10 text-[10px] font-bold uppercase tracking-widest opacity-30">Acceso Admin</button>
+                    </div>
+                `;
+            }
+
+            const filtered = inventory.filter(p => {
+                const matchesSearch = p.name.toLowerCase().includes(searchFilter.toLowerCase());
+                const matchesBrand = brandFilter === 'Todas' || p.brand === brandFilter;
+                const matchesCategory = categoryFilter === 'Todo' || p.category === categoryFilter;
+                return matchesSearch && matchesBrand && matchesCategory;
+            });
+
+            const theme = THEMES[config.theme];
+
+            return `
+                <nav class="bg-white/80 backdrop-blur-md p-4 border-b theme-border flex justify-between items-center sticky top-0 z-50">
+                    <div class="flex items-center gap-2">
+                        <div class="p-2 rounded-xl text-white shadow-md" style="background-color: ${theme.accent}"><i data-lucide="sparkles" class="w-5 h-5"></i></div>
+                        <div>
+                            <span class="block font-extrabold leading-none text-lg" style="color: ${theme.accent}">Delly Beauty</span>
+                            <span class="block text-[8px] font-bold text-slate-300 uppercase tracking-widest">Catálogo Online</span>
+                        </div>
+                    </div>
+                    <button onclick="setView('login')" class="p-2 opacity-20"><i data-lucide="settings" class="w-5 h-5"></i></button>
+                </nav>
+
+                <div class="p-4 max-w-lg mx-auto space-y-5">
+                    <div class="relative">
+                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 w-4 h-4"></i>
+                        <input 
+                            type="text" 
+                            placeholder="Buscar productos..." 
+                            oninput="searchFilter = this.value; render();"
+                            class="w-full pl-11 pr-4 py-4 bg-white rounded-2xl shadow-sm border theme-border outline-none focus:ring-2"
+                        >
+                    </div>
+
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        ${['Todas', ...BRANDS].map(b => `
+                            <button onclick="brandFilter = '${b}'; render();" class="px-5 py-2 rounded-full text-[10px] font-bold uppercase ${brandFilter === b ? 'theme-btn shadow-lg' : 'bg-white text-slate-400 border theme-border'}">${b}</button>
+                        `).join('')}
+                    </div>
+
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar">
+                        ${['Todo', ...CATEGORIES].map(c => `
+                            <button onclick="categoryFilter = '${c}'; render();" class="px-4 py-2 rounded-xl text-xs font-bold ${categoryFilter === c ? 'bg-slate-800 text-white' : 'bg-white text-slate-400 border theme-border'}">${c}</button>
+                        `).join('')}
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        ${filtered.map(p => `
+                            <div class="product-card overflow-hidden shadow-sm border theme-border">
+                                <div class="aspect-square bg-slate-50 flex items-center justify-center relative">
+                                    ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<i data-lucide="camera" class="text-slate-200 w-8 h-8"></i>'}
+                                    <span class="absolute top-2 left-2 bg-white/90 px-2 py-0.5 rounded-lg text-[7px] font-black uppercase" style="color: ${theme.accent}">${p.brand}</span>
+                                </div>
+                                <div class="p-3">
+                                    <h3 class="font-bold text-[11px] text-slate-700 truncate">${p.name}</h3>
+                                    <div class="flex justify-between items-center mt-1">
+                                        <p class="font-extrabold text-sm" style="color: ${theme.accent}">$${Number(p.price).toLocaleString()}</p>
+                                        <span class="text-[8px] font-bold text-slate-300">${p.quantity} U.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLogin() {
+            return `
+                <div class="min-h-screen flex flex-col items-center justify-center p-6 theme-bg">
+                    <div class="w-full max-w-sm bg-white rounded-[2.5rem] p-10 shadow-2xl text-center">
+                        <i data-lucide="lock" class="w-10 h-10 mx-auto mb-4 theme-text"></i>
+                        <h2 class="text-xl font-bold mb-6">Administración</h2>
+                        <input type="password" id="passInput" placeholder="Clave" class="w-full p-4 bg-slate-50 rounded-2xl mb-4 text-center text-xl border-none outline-none font-bold">
+                        <button onclick="handleLogin()" class="w-full py-4 theme-btn rounded-2xl font-bold shadow-lg">ENTRAR</button>
+                        <button onclick="setView('catalog')" class="mt-6 text-[10px] font-bold uppercase opacity-30">Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdmin() {
+            const theme = THEMES[config.theme];
+            return `
+                <nav class="bg-white p-4 border-b flex justify-between items-center sticky top-0 z-50">
+                    <span class="font-black text-xs uppercase tracking-widest">Panel de Control</span>
+                    <button onclick="logout()" class="text-red-400 text-xs font-bold">SALIR</button>
+                </nav>
+
+                <div class="p-4 max-w-lg mx-auto space-y-6 pb-20">
+                    <!-- Configuración de la App -->
+                    <div class="bg-white p-6 rounded-[2rem] shadow-sm border theme-border space-y-4">
+                        <h3 class="text-xs font-black uppercase theme-text">Personalización de App</h3>
+                        
+                        <div class="space-y-2">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase">Color del Tema:</p>
+                            <div class="flex gap-3">
+                                ${Object.keys(THEMES).map(t => `
+                                    <button onclick="changeTheme('${t}')" class="w-10 h-10 rounded-full border-4 ${config.theme === t ? 'border-slate-800' : 'border-white shadow-sm'}" style="background-color: ${THEMES[t].accent}"></button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase">Catálogo para Clientes:</p>
+                            <button onclick="toggleCatalog()" class="px-4 py-2 rounded-xl text-[10px] font-bold uppercase ${config.catalogActive ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}">
+                                ${config.catalogActive ? 'ACTIVO' : 'PAUSADO'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Agregar Producto -->
+                    <div class="bg-white p-6 rounded-[2rem] shadow-xl border-2 theme-border space-y-3">
+                        <h3 class="text-xs font-black uppercase theme-text">Nuevo Producto</h3>
+                        <input id="prodName" placeholder="Nombre" class="w-full p-4 bg-slate-50 rounded-xl outline-none text-sm font-bold">
+                        <div class="grid grid-cols-2 gap-2">
+                            <select id="prodBrand" class="w-full p-4 bg-slate-50 rounded-xl text-sm font-bold">${BRANDS.map(b => `<option value="${b}">${b}</option>`).join('')}</select>
+                            <select id="prodCategory" class="w-full p-4 bg-slate-50 rounded-xl text-sm font-bold">${CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+                        </div>
+                        <div class="flex gap-2">
+                            <input id="prodPrice" type="number" placeholder="Precio" class="flex-1 p-4 bg-slate-50 rounded-xl font-bold">
+                            <input id="prodStock" type="number" placeholder="Stock" class="flex-1 p-4 bg-slate-50 rounded-xl font-bold">
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="file" id="prodImg" class="hidden" accept="image/*" onchange="previewImg(event)">
+                            <button onclick="document.getElementById('prodImg').click()" class="flex-1 p-4 bg-slate-50 rounded-xl text-[10px] font-bold uppercase">Foto</button>
+                            <button onclick="saveProduct()" class="flex-[2] py-4 theme-btn rounded-xl font-bold shadow-lg">GUARDAR</button>
+                        </div>
+                    </div>
+
+                    <!-- Inventario -->
+                    <div class="space-y-2">
+                        <p class="text-[10px] font-black text-slate-400 uppercase ml-2">Lista de Inventario</p>
+                        ${inventory.map((p, index) => `
+                            <div class="bg-white p-3 rounded-2xl flex items-center justify-between border theme-border">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-slate-50 overflow-hidden">
+                                        ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : ''}
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-xs">${p.name}</p>
+                                        <p class="text-[9px] theme-text font-black uppercase">${p.brand} • $${Number(p.price).toLocaleString()}</p>
+                                    </div>
+                                </div>
+                                <button onclick="deleteProduct(${index})" class="text-red-200 p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Lógica ---
+        let tempImage = null;
+
+        function handleLogin() {
+            if (document.getElementById('passInput').value === ADMIN_PASSWORD) { isAuth = true; setView('admin'); }
+            else alert('Clave incorrecta');
+        }
+
+        function logout() { isAuth = false; setView('catalog'); }
+
+        function changeTheme(t) {
+            config.theme = t;
+            localStorage.setItem('delly_config', JSON.stringify(config));
+            render();
+        }
+
+        function toggleCatalog() {
+            config.catalogActive = !config.catalogActive;
+            localStorage.setItem('delly_config', JSON.stringify(config));
+            render();
+        }
+
+        function previewImg(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => { tempImage = reader.result; alert('Imagen cargada'); };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveProduct() {
+            const name = document.getElementById('prodName').value;
+            const brand = document.getElementById('prodBrand').value;
+            const category = document.getElementById('prodCategory').value;
+            const price = document.getElementById('prodPrice').value;
+            const quantity = document.getElementById('prodStock').value;
+            if (!name || !price || !quantity) return alert('Faltan datos');
+            inventory.unshift({ name, brand, category, price, quantity, image: tempImage });
+            localStorage.setItem('delly_db', JSON.stringify(inventory));
+            tempImage = null;
+            render();
+        }
+
+        function deleteProduct(i) {
+            if (confirm('¿Eliminar producto?')) {
+                inventory.splice(i, 1);
+                localStorage.setItem('delly_db', JSON.stringify(inventory));
+                render();
+            }
+        }
+
+        window.onload = render;
+    </script>
+</body>
+</html>
