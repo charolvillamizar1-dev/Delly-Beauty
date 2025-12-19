@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Delly Beauty - WhatsApp Shop</title>
+    
+    <!-- PWA Meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="DellyBeauty">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: background-color 0.4s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .product-card {
+            border-radius: 1.25rem;
+            background: white;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .product-card:active { transform: scale(0.96); }
+
+        .cart-badge {
+            animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0.5); }
+            100% { transform: scale(1); }
+        }
+
+        :root {
+            --app-accent: #f472b6;
+        }
+    </style>
+</head>
+<body class="bg-zinc-50 pb-20">
+    <div id="app"></div>
+
+    <script>
+        // --- Estado Global ---
+        // IMPORTANTE: Pon tu número aquí (con código de país, sin el +)
+        const MI_WHATSAPP = '573000000000'; 
+        const ADMIN_PASSWORD = 'Delly2013';
+        const BRANDS = ['Natura', 'Avon', 'Yanbal'];
+        const CATEGORIES = ['Cuidado Capilar', 'Cuidado de la Piel', 'Maquillaje', 'Perfumería', 'Accesorios'];
+        
+        const THEMES = {
+            rosa: { bg: '#fdf2f2', accent: '#f472b6', border: '#fee2e2', text: '#be185d' },
+            lavanda: { bg: '#f5f3ff', accent: '#8b5cf6', border: '#ddd6fe', text: '#5b21b6' },
+            menta: { bg: '#f0fdf4', accent: '#10b981', border: '#d1fae5', text: '#065f46' },
+            crema: { bg: '#fffbeb', accent: '#d97706', border: '#fef3c7', text: '#92400e' }
+        };
+
+        let inventory = JSON.parse(localStorage.getItem('delly_db')) || [];
+        let config = JSON.parse(localStorage.getItem('delly_config')) || { theme: 'rosa', catalogActive: true };
+        let cart = [];
+        
+        let currentView = 'catalog'; 
+        let isAuth = false;
+        let searchFilter = '';
+        let brandFilter = 'Todas';
+        let categoryFilter = 'Todo';
+
+        function updateStyles() {
+            const theme = THEMES[config.theme];
+            document.body.style.backgroundColor = theme.bg;
+            document.documentElement.style.setProperty('--app-accent', theme.accent);
+        }
+
+        function setView(v) { 
+            currentView = v; 
+            render(); 
+            window.scrollTo(0,0);
+        }
+
+        // --- Lógica del Carrito ---
+        function addToCart(productId) {
+            const product = inventory.find(p => p.id === productId);
+            if (!product || product.quantity <= 0) return;
+
+            const existing = cart.find(item => item.id === productId);
+            if (existing) {
+                if (existing.qty < product.quantity) existing.qty++;
+                else alert('Stock máximo alcanzado');
+            } else {
+                cart.push({ ...product, qty: 1 });
+            }
+            render();
+        }
+
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            render();
+        }
+
+        function updateQty(index, delta) {
+            const item = cart[index];
+            const product = inventory.find(p => p.id === item.id);
+            const newQty = item.qty + delta;
+            
+            if (newQty > 0 && newQty <= product.quantity) {
+                item.qty = newQty;
+                render();
+            } else if (newQty === 0) {
+                removeFromCart(index);
+            }
+        }
+
+        // --- Renderizado ---
+        function render() {
+            updateStyles();
+            const app = document.getElementById('app');
+            const theme = THEMES[config.theme];
+
+            if (currentView === 'catalog') app.innerHTML = renderCatalog(theme);
+            else if (currentView === 'cart') app.innerHTML = renderCart(theme);
+            else if (currentView === 'login') app.innerHTML = renderLogin(theme);
+            else if (currentView === 'admin') app.innerHTML = renderAdmin(theme);
+            
+            lucide.createIcons();
+        }
+
+        function renderCatalog(theme) {
+            if (!config.catalogActive) {
+                return `<div class="min-h-screen flex flex-col items-center justify-center p-10 text-center"><i data-lucide="lock" class="w-12 h-12 mb-4 opacity-20"></i><p class="font-bold opacity-40">Catálogo pausado</p><button onclick="setView('login')" class="mt-8 text-[10px] opacity-20 uppercase font-bold tracking-widest">Login</button></div>`;
+            }
+
+            const filtered = inventory.filter(p => {
+                const matchesSearch = p.name.toLowerCase().includes(searchFilter.toLowerCase());
+                const matchesBrand = brandFilter === 'Todas' || p.brand === brandFilter;
+                const matchesCategory = categoryFilter === 'Todo' || p.category === categoryFilter;
+                return matchesSearch && matchesBrand && matchesCategory;
+            });
+
+            return `
+                <nav class="bg-white/90 backdrop-blur-xl p-4 sticky top-0 z-50 flex justify-between items-center border-b border-black/5">
+                    <div class="flex items-center gap-2">
+                        <div class="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg" style="background: ${theme.accent}">
+                            <i data-lucide="flower-2" class="w-5 h-5"></i>
+                        </div>
+                        <h1 class="font-extrabold text-lg tracking-tight" style="color: ${theme.text}">Delly Beauty</h1>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="setView('login')" class="p-2 text-slate-300"><i data-lucide="settings" class="w-5 h-5"></i></button>
+                        <button onclick="setView('cart')" class="relative p-2">
+                            <i data-lucide="shopping-cart" class="w-6 h-6 text-slate-700"></i>
+                            ${cart.length > 0 ? `<span class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white cart-badge">${cart.reduce((a, b) => a + b.qty, 0)}</span>` : ''}
+                        </button>
+                    </div>
+                </nav>
+
+                <div class="p-4 max-w-lg mx-auto space-y-6">
+                    <div class="relative">
+                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                        <input type="text" placeholder="Buscar productos..." oninput="searchFilter = this.value; render();" class="w-full pl-12 pr-4 py-4 bg-white rounded-2xl outline-none border border-transparent focus:border-pink-200 shadow-sm text-sm">
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                            <span class="text-[10px] font-black uppercase text-slate-400 mr-2">Marcas:</span>
+                            ${['Todas', ...BRANDS].map(b => `
+                                <button onclick="brandFilter='${b}'; render();" class="px-4 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all ${brandFilter === b ? 'text-white shadow-md' : 'bg-white text-slate-500'}" style="${brandFilter === b ? 'background:'+theme.accent : ''}">
+                                    ${b}
+                                </button>
+                            `).join('')}
+                        </div>
+                        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                            <span class="text-[10px] font-black uppercase text-slate-400 mr-2">Cuidado:</span>
+                            ${['Todo', ...CATEGORIES].map(c => `
+                                <button onclick="categoryFilter='${c}'; render();" class="px-4 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all ${categoryFilter === c ? 'bg-slate-800 text-white' : 'bg-white text-slate-500'}">
+                                    ${c}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        ${filtered.map(p => `
+                            <div class="product-card flex flex-col shadow-sm border border-black/5 overflow-hidden">
+                                <div class="aspect-square bg-white relative">
+                                    ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center opacity-10"><i data-lucide="image" class="w-10 h-10"></i></div>`}
+                                    <div class="absolute top-2 left-2 bg-white/80 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase text-slate-600">${p.brand}</div>
+                                </div>
+                                <div class="p-3 flex-1 flex flex-col justify-between">
+                                    <div>
+                                        <h3 class="font-bold text-xs text-slate-800 leading-tight mb-1 truncate">${p.name}</h3>
+                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">${p.category}</p>
+                                    </div>
+                                    <div class="flex items-center justify-between mt-3">
+                                        <span class="font-extrabold text-sm" style="color: ${theme.accent}">$${Number(p.price).toLocaleString()}</span>
+                                        <button onclick="addToCart(${p.id})" class="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-transform" style="background: ${theme.accent}">
+                                            <i data-lucide="plus" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCart(theme) {
+            const total = cart.reduce((a, b) => a + (b.price * b.qty), 0);
+            return `
+                <nav class="bg-white p-4 sticky top-0 z-50 flex items-center gap-4 border-b">
+                    <button onclick="setView('catalog')" class="p-1"><i data-lucide="arrow-left" class="w-6 h-6"></i></button>
+                    <h2 class="font-bold">Carrito de Compras</h2>
+                </nav>
+                <div class="p-4 max-w-lg mx-auto space-y-4">
+                    ${cart.length === 0 ? `
+                        <div class="py-20 text-center opacity-30"><i data-lucide="shopping-bag" class="w-16 h-16 mx-auto mb-4"></i><p>Tu carrito está vacío</p></div>
+                    ` : `
+                        <div class="space-y-2">
+                            ${cart.map((item, i) => `
+                                <div class="bg-white p-3 rounded-2xl flex gap-4 items-center border border-black/5">
+                                    <div class="w-14 h-14 rounded-xl overflow-hidden bg-slate-50">
+                                        ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : ''}
+                                    </div>
+                                    <div class="flex-1">
+                                        <h4 class="font-bold text-xs">${item.name}</h4>
+                                        <p class="text-xs font-bold" style="color: ${theme.accent}">$${Number(item.price).toLocaleString()}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
+                                        <button onclick="updateQty(${i}, -1)" class="w-7 h-7 flex items-center justify-center bg-white rounded-lg shadow-sm font-bold text-xs">-</button>
+                                        <span class="text-xs font-bold w-4 text-center">${item.qty}</span>
+                                        <button onclick="updateQty(${i}, 1)" class="w-7 h-7 flex items-center justify-center bg-white rounded-lg shadow-sm font-bold text-xs">+</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-[2rem] shadow-xl border theme-border">
+                            <div class="flex justify-between items-center mb-6">
+                                <span class="text-slate-400 font-bold uppercase text-[10px]">Total estimado</span>
+                                <span class="text-2xl font-black" style="color: ${theme.accent}">$${total.toLocaleString()}</span>
+                            </div>
+                            <button onclick="checkout()" class="w-full py-5 rounded-2xl text-white font-bold shadow-lg flex items-center justify-center gap-3 transition-transform active:scale-95" style="background: #25D366">
+                                <i data-lucide="message-circle" class="w-5 h-5"></i>
+                                PEDIR POR WHATSAPP
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        function renderLogin(theme) {
+            return `
+                <div class="min-h-screen flex items-center justify-center p-6">
+                    <div class="w-full max-w-sm bg-white rounded-[2.5rem] p-10 shadow-2xl text-center">
+                        <h2 class="text-lg font-bold mb-6">Acceso Admin</h2>
+                        <input type="password" id="passInput" placeholder="Clave" class="w-full p-4 bg-slate-50 rounded-2xl mb-4 text-center outline-none border-2 border-transparent focus:border-pink-200 font-bold">
+                        <button onclick="handleLogin()" class="w-full py-4 text-white rounded-2xl font-bold" style="background: ${theme.accent}">ENTRAR</button>
+                        <button onclick="setView('catalog')" class="mt-6 text-[10px] font-black uppercase opacity-20">Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdmin(theme) {
+            return `
+                <nav class="bg-white p-4 sticky top-0 z-50 flex justify-between items-center border-b">
+                    <h2 class="font-black text-xs uppercase tracking-widest">Admin</h2>
+                    <button onclick="logout()" class="text-red-500 font-bold text-[10px]">CERRAR SESIÓN</button>
+                </nav>
+                <div class="p-4 max-w-lg mx-auto space-y-4 pb-20">
+                    <div class="bg-white p-6 rounded-[2rem] border border-black/5 space-y-4">
+                        <p class="text-[10px] font-black uppercase opacity-40">Configuración Global</p>
+                        <div class="flex gap-4">
+                            ${Object.keys(THEMES).map(t => `<button onclick="changeTheme('${t}')" class="w-8 h-8 rounded-full border-2 ${config.theme === t ? 'border-black' : 'border-white shadow-sm'}" style="background: ${THEMES[t].accent}"></button>`).join('')}
+                        </div>
+                        <button onclick="toggleCatalog()" class="w-full py-3 rounded-xl text-[10px] font-bold ${config.catalogActive ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}">
+                            TIENDA: ${config.catalogActive ? 'ACTIVA' : 'DESACTIVADA'}
+                        </button>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-[2rem] shadow-xl border-2" style="border-color: ${theme.border}">
+                        <h3 class="text-[10px] font-black uppercase mb-4" style="color: ${theme.accent}">Nuevo Producto</h3>
+                        <input id="prodName" placeholder="Nombre" class="w-full p-3 bg-slate-50 rounded-xl mb-2 text-sm font-bold">
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <select id="prodBrand" class="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold">${BRANDS.map(b => `<option value="${b}">${b}</option>`).join('')}</select>
+                            <select id="prodCategory" class="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold">${CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}</select>
+                        </div>
+                        <div class="flex gap-2 mb-4">
+                            <input id="prodPrice" type="number" placeholder="Precio" class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold">
+                            <input id="prodStock" type="number" placeholder="Stock" class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold">
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="file" id="prodImg" class="hidden" accept="image/*" onchange="previewImg(event)">
+                            <button onclick="document.getElementById('prodImg').click()" class="flex-1 p-3 bg-slate-50 rounded-xl text-[10px] font-bold uppercase">Foto</button>
+                            <button onclick="saveProduct()" class="flex-[2] py-3 text-white rounded-xl font-bold" style="background: ${theme.accent}">GUARDAR</button>
+                        </div>
+                    </div>
+
+                    ${inventory.map((p, idx) => `
+                        <div class="bg-white p-3 rounded-2xl flex items-center justify-between border border-black/5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-slate-50 overflow-hidden">
+                                    ${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : ''}
+                                </div>
+                                <p class="text-xs font-bold truncate w-32">${p.name}</p>
+                            </div>
+                            <button onclick="deleteProduct(${idx})" class="text-red-200 p-2"><i data-lucide="trash" class="w-4 h-4"></i></button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // --- Lógica Final ---
+        let tempImage = null;
+
+        function handleLogin() {
+            if (document.getElementById('passInput').value === ADMIN_PASSWORD) { isAuth = true; setView('admin'); }
+            else alert('Error de acceso');
+        }
+
+        function logout() { isAuth = false; setView('catalog'); }
+
+        function changeTheme(t) { config.theme = t; saveConfig(); render(); }
+
+        function toggleCatalog() { config.catalogActive = !config.catalogActive; saveConfig(); render(); }
+
+        function saveConfig() { localStorage.setItem('delly_config', JSON.stringify(config)); }
+
+        function previewImg(e) {
